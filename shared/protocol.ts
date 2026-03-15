@@ -3,3 +3,10 @@ export const REDIS_KEYS = {
   TELEMETRY_STREAM: "valkyrie:telemetry",
   GROUPE_NAME: "valkyrie_processors",
 };
+
+export interface AttackConfig {
+  targetUrl: string;
+  concurrency: number;
+  duration: number;
+  method: "GET" | "POST";
+}
