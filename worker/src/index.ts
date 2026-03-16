@@ -16,3 +16,7 @@ const engine = new LoadEngine(nodeId, async (ev) => {
     ts: ev.ts.toString(),
   });
 });
+
+redis.subscribe(REDIS_KEYS.COMMAND_CHANNEL, (msg) => {
+  const data = JSON.parse(msg);
+});
