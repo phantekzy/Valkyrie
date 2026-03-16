@@ -18,5 +18,19 @@ export class LoadEngine {
   async start(config: AttackConfig) {
     this.active = true;
     const end = Date.now() + config.duration * 1000;
+    const lanes = Array.from({ length: config.concurrency }).map(async () => {
+      while (this.active && Date.now() < end) {
+        const start = performance.now();
+        try {
+        } catch (err) {
+          await this.onReport({
+            nodeId: this.nodeId,
+            status: 504,
+            latency: 5000,
+            ts: Date.now(),
+          });
+        }
+      }
+    });
   }
 }
