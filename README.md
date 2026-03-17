@@ -1,71 +1,70 @@
-#!/bin/bash
+# Valkyrie | Distributed Load Orchestration System
 
-# VALKYRIE README GENERATOR
-# Run this script to create/overwrite the project documentation.
+Valkyrie is a high-velocity, asynchronous traffic orchestration framework designed to simulate extreme system stress in distributed environments. By utilizing a decoupled Controller-Worker architecture, the system provides real-time telemetry and sub-millisecond analytics without compromising the integrity of the execution lanes.
 
-cat << 'EOF' > README.md
-# VALKYRIE: Distributed Systems Command & Control (C2)
+## System Architecture
 
-Valkyrie is an advanced, high-concurrency load orchestration framework designed for systems engineers. It utilizes a decoupled Controller-Worker architecture to execute large-scale traffic generation while providing real-time telemetry, sub-millisecond performance analytics, and dynamic intensity adjustment via a centralized Terminal User Interface (TUI).
+The system operates on a State-Synchronized model orchestrated via a high-throughput Redis message bus.
 
----
-
-## 1. System Architecture
-
-The project is built on the principle of distributed state management, leveraging Redis as a high-throughput message bus.
-
-### 1.1 The Control Plane (Controller)
-The Controller operates as the cluster's brain, providing a visual dashboard built with the `blessed-contrib` engine.
-* **Command Broadcasting:** Utilizes Redis Pub/Sub to send global synchronization signals (START, UPDATE, STOP).
-* **Telemetry Aggregation:** Consumes atomic events from Redis Streams, processing them in batches to calculate cluster-wide P99 latencies.
-
-### 1.2 The Data Plane (Worker)
-Workers are stateless, high-performance agents capable of scaling horizontally across multiple nodes.
-* **Asynchronous Lanes:** Employs non-blocking HTTP workers to saturate target bandwidth.
-* **Precision Reporting:** Captures high-resolution timing data using the `performance` API and ships JSON-serialized telemetry to the broker.
-
-### 1.3 The Transport Layer (Redis)
-* **Streams:** Provides a persistent buffer for telemetry, ensuring data integrity even if the Controller experiences temporary processing lag.
-* **Consumer Groups:** Enables the system to scale telemetry processing across multiple dashboard instances if required.
+1.  **Command & Control (Controller):** A centralized TUI dashboard built on the Blessed-contrib engine. It broadcasts operational signals (START, UPDATE, STOP) and aggregates telemetry batches into visual performance metrics.
+2.  **Orchestration (Broker):** Managed by Redis, the system utilizes Pub/Sub for low-latency command propagation and Redis Streams for persistent telemetry buffering and consumer group management.
+3.  **Execution (Worker):** Stateless, horizontally scalable agents that monitor the command channel. Workers spawn asynchronous HTTP "lanes" with isolated reporting logic to ensure maximum target saturation.
 
 ---
 
-## 2. Technical Specifications
+## Technical Specifications
 
-### 2.1 Performance Analytics
-* **P99 Latency:** Calculated via a rolling-window sorting algorithm to identify the 99th percentile, providing an accurate view of system tail-latency.
-* **Throughput (RPS):** Real-time tracking of successful requests per second across the entire cluster.
-* **Status Distribution:** Real-time categorical analysis of HTTP response codes (2xx, 4xx, 5xx).
+### Performance Analytics & Telemetry
+* **P99 Tail-Latency:** Real-time calculation via a rolling-window sorting algorithm, identifying the 99th percentile to expose worst-case performance outliers.
+* **Throughput (RPS):** Atomic request tracking across the entire cluster, providing real-time data on successful vs. failed interactions.
+* **Dynamic Intensity:** Real-time hot-swapping of concurrency settings via the controller, allowing for immediate scaling of load without process termination.
 
-### 2.2 Stack Overview
-* **Runtime:** Node.js (ES Modules)
+### Full-Stack Integrity
+The system maintains a unified TypeScript protocol layer. The 'AttackConfig' and 'TelemetryEvent' contracts are strictly enforced between the C2 Dashboard and the distributed Workers, ensuring structural integrity across the Redis wire.
+
+## Tech Stack
+
+* **Runtime:** Node.js (ESM)
+* **Infrastructure:** Redis (Orchestrated via Podman)
+* **TUI Layer:** Blessed / Blessed-contrib
 * **Language:** TypeScript
-* **Communication:** Redis (Streams & Pub/Sub)
-* **UI Engine:** Blessed / Blessed-contrib
-* **Containerization:** Podman / Docker (Alpine-based)
+* **HTTP Engine:** Axios (Custom Keep-Alive)
 
 ---
 
-## 3. Security & Configuration
+## Environment Configuration
 
-The system follows a strict configuration-driven approach. Sensitive infrastructure details are never hardcoded in the source logic.
+Configuration is driven strictly via environment variables to ensure zero-leak security. Hardcoded IP addresses and internal endpoints are prohibited.
 
-### Environment Variables
-The following variables must be set in the execution environment:
-* `VALKYRIE_REDIS_URL`: The connection string for the Redis broker.
-* `VALKYRIE_TARGET_URL`: The designated endpoint for load operations.
+### Global Configuration
+- **VALKYRIE_REDIS_URL**: The full connection string for the Redis broker.
+- **VALKYRIE_TARGET_URL**: The designated endpoint for load generation operations.
 
 ---
 
-## 4. Deployment & Operation
+## Deployment & Development
 
-### 4.1 Infrastructure Reset
-To ensure a clean state, purge existing containers and re-deploy the broker:
-
-```bash
-# Environment Cleanup
-podman stop valkyrie-broker valkyrie-target 2>/dev/null
-podman rm valkyrie-broker valkyrie-target 2>/dev/null
-
-# Infrastructure Deployment
+### 1. Initialize Infrastructure (Podman)
 podman run -d --name valkyrie-broker -p 6379:6379 redis:alpine
+
+### 2. Ignition
+# Launch Controller
+cd controller && npx tsx src/index.ts
+
+# Launch Workers
+cd worker && npx tsx src/index.ts
+
+---
+
+## Command Reference
+The TUI provides granular control over the cluster lifecycle:
+* [S] - Initialize cluster-wide attack sequence.
+* [UP/DOWN] - Dynamically adjust concurrency (+/- 10).
+* [Q] - Immediate graceful shutdown and state cleanup.
+
+---
+
+## Author
+Maini Lotfi Abdelkader (phantekzy)
+Systems Engineer & Full Stack Developer
+Algiers, Algeria
