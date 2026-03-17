@@ -1,66 +1,68 @@
-# Valkyrie | Distributed Load Orchestration System
+# Valkyrie C2 | Distributed Orchestrator
 
-Valkyrie is a high-velocity, asynchronous traffic orchestration framework designed to simulate extreme system stress in distributed environments. By utilizing a decoupled Controller-Worker architecture, the system provides real-time telemetry and sub-millisecond analytics without compromising the integrity of the execution lanes.
+A high-performance, terminal-based Command & Control (C2) dashboard designed for managing distributed load-testing clusters. Built with Node.js, Redis, and Blessed-Contrib, Valkyrie provides a real-time, low-latency interface for orchestrating worker nodes and monitoring telemetry.
+
+---
 
 ## System Architecture
 
-The system operates on a State-Synchronized model orchestrated via a high-throughput Redis message bus.
+The orchestrator utilizes a Controller-Worker model, communicating over a Redis backbone for both command broadcasting and telemetry ingestion.
 
-1. **Command & Control (Controller):** A centralized TUI dashboard built on the Blessed-contrib engine. It broadcasts operational signals (START, UPDATE, STOP) and aggregates telemetry batches into visual performance metrics.
-2. **Orchestration (Broker):** Managed by Redis, the system utilizes Pub/Sub for low-latency command propagation and Redis Streams for persistent telemetry buffering and consumer group management.
-3. **Execution (Worker):** Stateless, horizontally scalable agents that monitor the command channel. Workers spawn asynchronous HTTP "lanes" with isolated reporting logic to ensure maximum target saturation.
-
----
-
-## Technical Specifications
-
-### Performance Analytics & Telemetry
-* **P99 Tail-Latency:** Real-time calculation via a rolling-window sorting algorithm, identifying the 99th percentile to expose worst-case performance outliers.
-* **Throughput (RPS):** Atomic request tracking across the entire cluster, providing real-time data on successful vs. failed interactions.
-* **Dynamic Intensity:** Real-time hot-swapping of concurrency settings via the controller, allowing for immediate scaling of load without process termination.
-
-### Full-Stack Integrity
-The system maintains a unified TypeScript protocol layer. The 'AttackConfig' and 'TelemetryEvent' contracts are strictly enforced between the C2 Dashboard and the distributed Workers, ensuring structural integrity across the Redis wire.
-
-## Tech Stack
-
-* **Runtime:** Node.js (ESM)
-* **Infrastructure:** Redis (Orchestrated via Podman)
-* **TUI Layer:** Blessed / Blessed-contrib
-* **Language:** TypeScript
-* **HTTP Engine:** Axios (Custom Keep-Alive)
+* **Command Channel**: Redis Pub/Sub for instantaneous node synchronization.
+* **Telemetry Stream**: Redis Streams for high-throughput, persistent metric collection.
+* **Analytics Engine**: Real-time P99 latency calculation and status code distribution.
 
 ---
 
-## Environment Configuration
+## Features
 
-Configuration is driven strictly via environment variables to ensure zero-leak security. Hardcoded IP addresses and internal endpoints are prohibited.
+### Real-Time Dashboard
+* **Network Latency**: Integrated line graph tracking P99 millisecond spikes.
+* **Node Topology**: Active table tracking RPS (Requests Per Second) and error rates per cluster.
+* **Load Meter**: Dynamic gauge tracking system pressure based on aggressivity settings.
+* **Kernel Log**: Synchronized event logging with ANSI color support and automated status reporting.
 
-### Global Configuration
-* **VALKYRIE_REDIS_URL**: The full connection string for the Redis broker.
-* **VALKYRIE_TARGET_URL**: The designated endpoint for load generation operations.
-
----
-
-## Deployment & Development
-
-### 1. Initialize Infrastructure (Podman)
-podman run -d --name valkyrie-broker -p 6379:6379 redis:alpine
-
-### 2. Ignition
-# Launch Controller
-cd controller && npx tsx src/index.ts
-
-# Launch Workers
-cd worker && npx tsx src/index.ts
+### Operations Control
+* **Mesh Engagement**: Global START / STOP signals with integrated safety confirmation prompts.
+* **Live Injection**: Update Target URLs and Aggressivity multipliers on-the-fly without restarting worker processes.
+* **Theme Engine**: Professional color palettes (Valkyrie, Emerald, Cobalt) optimized for high-contrast terminal environments.
 
 ---
 
-## Command Reference
-The TUI provides granular control over the cluster lifecycle:
-* [S] - Initialize cluster-wide attack sequence.
-* [UP/DOWN] - Dynamically adjust concurrency (+/- 10).
-* [Q] - Immediate graceful shutdown and state cleanup.
+## Keybindings
+
+| Key | Action | Description |
+| :--- | :--- | :--- |
+| **S** | **START** | Engage all mesh nodes and begin broadcasting. |
+| **X** | **STOP** | Terminate all active worker sessions. |
+| **U** | **TARGET** | Change the destination endpoint URL dynamically. |
+| **A** | **AGGRO** | Adjust the aggressivity multiplier for load generation. |
+| **C** | **THEME** | Cycle through UI color palettes for optimal visibility. |
+| **Q** | **QUIT** | Terminate the orchestrator process. |
 
 ---
 
+## Installation & Setup
+
+1.  **Prerequisites**:
+    * Node.js (v18 or higher)
+    * Redis Server (Running on 127.0.0.1:6379)
+
+2.  **Configuration**:
+    Verify that `shared/protocol.js` contains the correct `REDIS_KEYS` for the telemetry stream and command channel to match your worker configuration.
+
+3.  **Execution**:
+    ```bash
+    # Install dependencies
+    npm install
+
+    # Launch the Orchestrator
+    npx tsx src/index.ts
+    ```
+
+---
+
+## Security & Performance
+* **Stream Acknowledgment**: Implements xAck to ensure telemetry data is processed reliably within the Redis Consumer Group.
+* **Memory Efficiency**: Automatic raw latency buffer management to prevent memory leaks during high-concurrency sessions.
+* **Smart CSR**: Optimized terminal rendering via Smart Control Sequence Rom (CSR) to minimize CPU overhead during millisecond UI refreshes.
