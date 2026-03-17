@@ -1,6 +1,6 @@
 import { createClient } from "redis";
 import { LoadEngine } from "./engine.js";
-import { AttackConfig, REDIS_KEYS } from "../../shared/protocol.js";
+import { REDIS_KEYS, AttackConfig } from "../../shared/protocol.js";
 
 const nodeId = `node-${Math.random().toString(36).slice(2, 6)}`;
 const redis = createClient({ url: "redis://127.0.0.1:6379" });
@@ -26,4 +26,4 @@ redis.subscribe(REDIS_KEYS.COMMAND_CHANNEL, (msg) => {
   }
 });
 
-console.log(`[SYSTEM] Worker ${nodeId} initialized.`);
+console.log(`[SYSTEM] Worker ${nodeId} online.`);
