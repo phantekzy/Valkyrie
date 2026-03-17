@@ -41,7 +41,12 @@ async function main() {
     );
     if (data) {
       data[0].messages.forEach((m) => {
-        const lat = parseFloat(m.data.Latency);
+        const lat = parseFloat(m.data.latency);
+        rawLatencies.push(lat);
+        if (rawLatencies.length > 500) rawLatencies.shift();
+
+        const sorted = [...rawLatencies].sort((a, b) => a - b);
+        const p99 = sorted[Math.ceil(sorted.length * 0.99) - 1];
       });
     }
   }
