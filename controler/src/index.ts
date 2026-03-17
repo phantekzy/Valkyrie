@@ -39,5 +39,10 @@ async function main() {
       { key: REDIS_KEYS.TELEMETRY_STREAM, id: ">" },
       { COUNT: 50, BLOCK: 100 },
     );
+    if (data) {
+      data[0].messages.forEach((m) => {
+        const lat = parseFloat(m.data.Latency);
+      });
+    }
   }
 }
