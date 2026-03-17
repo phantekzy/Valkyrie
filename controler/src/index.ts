@@ -24,51 +24,163 @@ let rawLatencies = [];
 const statuses = { "2xx": 0, "5xx": 0 };
 const startTime = Date.now();
 
-const latencyHistory = {
-  title: "P99 Latency",
-  x: ["00:00:00"],
-  y: [0],
-  style: { line: "yellow" },
-};
-
 const PALETTES = [
   { name: "Valkyrie", main: "yellow", accent: "cyan" },
   { name: "Emerald", main: "green", accent: "white" },
   { name: "Cobalt", main: "blue", accent: "cyan" },
 ];
 
-const line = grid.set(0, 0, 4, 8, contrib.line, {
-  label: " [ NETWORK_PERFORMANCE ] ",
-  showLegend: false,
-  style: { line: "yellow", text: "white", baseline: "black" },
-});
+const latencyHistory = { x: ["00:00:00"], y: [0] };
 
-const healthBox = grid.set(0, 8, 4, 4, blessed.box, {
-  label: " [ SYSTEM_MANIFEST ] ",
+const header = grid.set(0, 0, 2, 12, blessed.box, {
   tags: true,
-  padding: { left: 1, top: 1 },
-  style: { border: { fg: "yellow" } },
+  border: "line",
+  style: { fg: "cyan", bold: true, border: { fg: "#44475a" } },
 });
 
-const table = grid.set(4, 0, 4, 9, contrib.table, {
+const healthBox = grid.set(2, 0, 4, 4, blessed.box, {
+  label: " [ SYSTEM ] ",
+  tags: true,
+  border: "line",
+  padding: { left: 1 },
+  style: { border: { fg: "yellow" }, fg: "white" },
+});
+
+const line = grid.set(2, 4, 4, 8, contrib.line, {
+  label: " [ NETWORK_LATENCY ] ",
+  showLegend: false,
+  border: "line",
+  style: { text: "white", baseline: "black" },
+});
+
+const table = grid.set(6, 0, 4, 9, contrib.table, {
   keys: true,
-  label: " [ ACTIVE_WORKER_NODES ] ",
-  columnSpacing: 4,
+  label: " [ NODES ] ",
+  border: "line",
+  columnSpacing: 2,
   columnWidth: [18, 10, 10, 12],
+  fg: "white",
+  selectedFg: "black",
+  selectedBg: "yellow",
+  style: {
+    border: { fg: "#44475a" },
+    header: { fg: "cyan", bold: true },
+    cell: { fg: "white" },
+  },
 });
 
-const gauge = grid.set(4, 9, 4, 3, contrib.gauge, {
+const gauge = grid.set(6, 9, 4, 3, contrib.gauge, {
   label: " [ LOAD ] ",
+  border: "line",
   stroke: "cyan",
   fill: "black",
-  fg: "white",
 });
 
-const log = grid.set(8, 0, 3, 12, contrib.log, {
-  label: " [ ORCHESTRATOR_LOGS ] ",
+const log = grid.set(10, 0, 2, 12, contrib.log, {
+  label: " [ KERNEL_LOG ] ",
   tags: true,
-  bufferLength: 100,
+  border: "line",
+  style: { fg: "white", border: { fg: "#44475a" } },
 });
+
+let pubClient = null;
+
+function updateHeader() {
+  const statusStr = isRunning ? "{green-fg}ACTIVE{/}" : "{red-fg}STANDBY{/}";
+  header.setContent(
+    `VALKYRIE C2 ORCHESTRATOR | ARCH: X64 | AUTH: PHANTEKZY\n` +
+      `TARGET: ${config.targetUrl} | STATUS: [ ${statusStr} ]`,
+  );
+}
+
+function broadcast(type) {
+  if (pubClient) {
+    pubClient.publish(
+      REDIS_KEYS.COMMAND_CHANNEL,
+      JSON.stringify({ type, config }),
+    );
+    log.log(`{cyan-fg}[ACTION]{/} ${type} signal broadcasted.`);
+  }
+}
+
+function confirmAction(type) {
+  const question = blessed.question({
+    parent: screen,
+    top: "center",
+    left: "center",
+    width: "40%",
+    height: "shrink",
+    border: "line",
+    label: " [ CONFIRM ] ",
+    style: { border: { fg: "yellow" }, bg: "black" },
+    keys: true,
+  });
+
+  const msg =
+    type === "START" ? "Engage all mesh nodes?" : "Kill all active sessions?";
+  question.ask(msg, (err, value) => {
+    if (value) {
+      isRunning = type === "START";
+      broadcast(type);
+      updateHeader();
+      screen.render();
+    }
+  });
+}
+
+function openConfigModal(title, current, cb) {
+  const form = blessed.form({
+    parent: screen,
+    top: "center",
+    left: "center",
+    width: 50,
+    height: 8,
+    border: "line",
+    label: ` [ ${title} ] `,
+    style: { border: { fg: "cyan" }, bg: "black" },
+    keys: true,
+  });
+
+  const input = blessed.textbox({
+    parent: form,
+    top: 2,
+    left: 2,
+    right: 2,
+    height: 3,
+    border: "line",
+    inputOnFocus: true,
+    value: current,
+    style: { border: { fg: "white" }, focus: { border: { fg: "cyan" } } },
+  });
+
+  input.focus();
+  input.on("submit", (v) => {
+    cb(v);
+    updateHeader();
+    broadcast("UPDATE");
+    form.destroy();
+    screen.render();
+  });
+  screen.render();
+}
+
+function cycleTheme() {
+  paletteIdx = (paletteIdx + 1) % PALETTES.length;
+  const p = PALETTES[paletteIdx];
+
+  [header, healthBox, table, gauge, log].forEach((c) => {
+    if (c.style && c.style.border) c.style.border.fg = p.main;
+  });
+
+  table.selectedBg = p.main;
+  table.style.header.fg = p.accent;
+
+  gauge.style.stroke = p.accent;
+  actionBar.style.selected.bg = p.main;
+
+  log.log(`{yellow-fg}[SYSTEM]{/} Applied palette: ${p.name}`);
+  screen.render();
+}
 
 const actionBar = blessed.listbar({
   parent: screen,
@@ -76,7 +188,6 @@ const actionBar = blessed.listbar({
   left: 0,
   right: 0,
   height: 1,
-  mouse: true,
   keys: true,
   style: {
     bg: "black",
@@ -84,20 +195,8 @@ const actionBar = blessed.listbar({
     selected: { bg: "yellow", fg: "black", bold: true },
   },
   commands: {
-    START: {
-      keys: ["s"],
-      callback: () => {
-        isRunning = true;
-        broadcast("START");
-      },
-    },
-    STOP: {
-      keys: ["x"],
-      callback: () => {
-        isRunning = false;
-        broadcast("STOP");
-      },
-    },
+    START: { keys: ["s"], callback: () => confirmAction("START") },
+    STOP: { keys: ["x"], callback: () => confirmAction("STOP") },
     TARGET: {
       keys: ["u"],
       callback: () =>
@@ -121,72 +220,6 @@ const actionBar = blessed.listbar({
   },
 });
 
-const form = blessed.form({
-  parent: screen,
-  top: "center",
-  left: "center",
-  width: 50,
-  height: 8,
-  border: "line",
-  hidden: true,
-  keys: true,
-  style: { border: { fg: "cyan" }, bg: "black" },
-});
-
-const formInput = blessed.textbox({
-  parent: form,
-  top: 2,
-  left: 2,
-  right: 2,
-  height: 3,
-  border: "line",
-  inputOnFocus: true,
-  style: { border: { fg: "white" }, focus: { border: { fg: "yellow" } } },
-});
-
-let pubClient = null;
-
-function broadcast(type) {
-  if (pubClient) {
-    pubClient.publish(
-      REDIS_KEYS.COMMAND_CHANNEL,
-      JSON.stringify({ type, config }),
-    );
-    log.log(`{cyan-fg}[ACTION]{/} ${type} signal broadcasted.`);
-  }
-}
-
-function openConfigModal(title, current, cb) {
-  form.setLabel(` [ ${title} ] `);
-  formInput.setValue(current);
-  form.show();
-  formInput.focus();
-  formInput.once("submit", (v) => {
-    cb(v);
-    broadcast("UPDATE");
-    form.hide();
-    screen.render();
-  });
-  screen.render();
-}
-
-function cycleTheme() {
-  paletteIdx = (paletteIdx + 1) % PALETTES.length;
-  const p = PALETTES[paletteIdx];
-
-  const components = [line, healthBox, table, gauge, log, form];
-  components.forEach((c) => {
-    if (c.style && c.style.border) c.style.border.fg = p.main;
-  });
-
-  line.style.line = p.main;
-  gauge.style.stroke = p.accent;
-  gauge.style.fg = p.main;
-  actionBar.style.selected.bg = p.main;
-  log.log(`{yellow-fg}[SYSTEM]{/} Applied palette: ${p.name}`);
-  screen.render();
-}
-
 function updateAnalytics() {
   if (rawLatencies.length > 0) {
     const sorted = [...rawLatencies].sort((a, b) => a - b);
@@ -197,24 +230,29 @@ function updateAnalytics() {
       latencyHistory.y.shift();
       latencyHistory.x.shift();
     }
-    line.setData([latencyHistory]);
+
+    line.setData([
+      {
+        title: "P99 Latency",
+        x: [...latencyHistory.x],
+        y: [...latencyHistory.y],
+        style: { line: PALETTES[paletteIdx].main },
+      },
+    ]);
     rawLatencies = [];
   }
 
   const total = statuses["2xx"] + statuses["5xx"];
-  const successRate =
-    total > 0 ? ((statuses["2xx"] / total) * 100).toFixed(2) : "100.00";
-
   healthBox.setContent(
-    `{bold}STATUS:{/bold} ${isRunning ? "{green-fg}ACTIVE{/}" : "{red-fg}HALTED{/}"}\n` +
-      `{bold}HEALTH:{/bold} ${successRate}%\n` +
-      `{bold}UPTIME:{/bold} ${Math.floor((Date.now() - startTime) / 1000)}s\n` +
-      `{bold}AGGRO: {/bold} LVL_${config.aggressivity}\n` +
-      `{bold}TOTAL: {/bold} ${totalProcessed}`,
+    `UPTIME   : ${Math.floor((Date.now() - startTime) / 1000)}s\n` +
+      `C2_LINK  : ${isRunning ? "{green-fg}ONLINE{/}" : "{red-fg}STANDBY{/}"}\n` +
+      `HEALTH   : ${total > 0 ? ((statuses["2xx"] / total) * 100).toFixed(2) : "100.00"}%\n` +
+      `AGGR     : x${config.aggressivity}\n` +
+      `TX_TOTAL : ${totalProcessed}`,
   );
 
   table.setData({
-    headers: ["NODE_ID", "RPS", "ERR", "STATE"],
+    headers: ["NODE", "RPS", "ERR", "STATE"],
     data: [
       [
         "valkyrie-alpha",
@@ -222,7 +260,7 @@ function updateAnalytics() {
         `${statuses["5xx"]}`,
         isRunning ? "RUN" : "IDLE",
       ],
-      ["cluster-mesh", `${totalProcessed}`, "--", "UP"],
+      ["cluster-mesh", `${totalProcessed}`, "0", "UP"],
     ],
   });
 }
@@ -231,8 +269,8 @@ async function boot() {
   const redis = createClient({ url: "redis://127.0.0.1:6379" });
   pubClient = redis.duplicate();
   await Promise.all([redis.connect(), pubClient.connect()]);
-
-  log.log(`{green-fg}[BOOT]{/} Orchestrator ready. Waiting for START signal.`);
+  log.log(`{green-fg}[BOOT]{/} Orchestrator ready.`);
+  updateHeader();
   screen.render();
 
   while (true) {
@@ -242,7 +280,6 @@ async function boot() {
       [{ key: REDIS_KEYS.TELEMETRY_STREAM, id: ">" }],
       { COUNT: 1000, BLOCK: 100 },
     );
-
     if (data && isRunning) {
       const msgs = data[0].messages;
       msgs.forEach((m) => {
@@ -258,10 +295,6 @@ async function boot() {
         REDIS_KEYS.GROUP_NAME,
         msgs.map((m) => m.id),
       );
-      if (msgs.length > 50)
-        log.log(
-          `{white-fg}[MESH]{/} High-volume burst: ${msgs.length} frames.`,
-        );
     }
   }
 }
@@ -272,6 +305,7 @@ setInterval(() => {
     : 0;
   gauge.setPercent(load);
   updateAnalytics();
+  updateHeader();
   reqCount = 0;
   screen.render();
 }, 1000);
