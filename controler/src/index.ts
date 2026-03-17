@@ -9,7 +9,6 @@ const screen = blessed.screen({
   fullUnicode: true,
 });
 
-screen.enableMouse();
 const grid = new contrib.grid({ rows: 12, cols: 12, screen });
 
 let config = {
@@ -18,52 +17,55 @@ let config = {
   aggressivity: 5,
 };
 let reqCount = 0;
+let totalProcessed = 0;
 let isRunning = false;
 let paletteIdx = 0;
-const rpsHistory = Array(60).fill(0);
-let rawLatencies: number[] = [];
+let rawLatencies = [];
 const statuses = { "2xx": 0, "5xx": 0 };
-const latencyHistory = {
-  title: "P99",
-  x: [],
-  y: [],
-  style: { line: "yellow" },
-};
+const startTime = Date.now();
 
-const C = {
-  reset: "\x1b[0m",
-  green: "\x1b[32m",
-  cyan: "\x1b[36m",
-  yellow: "\x1b[33m",
-  red: "\x1b[31m",
-  bold: "\x1b[1m",
+const latencyHistory = {
+  title: "P99 Latency",
+  x: ["00:00:00"],
+  y: [0],
+  style: { line: "yellow" },
 };
 
 const PALETTES = [
   { name: "Valkyrie", main: "yellow", accent: "cyan" },
   { name: "Emerald", main: "green", accent: "white" },
   { name: "Cobalt", main: "blue", accent: "cyan" },
-  { name: "Amethyst", main: "magenta", accent: "white" },
 ];
 
-const line = grid.set(0, 0, 6, 9, contrib.line, {
-  label: " Tail Latency (P99 ms) ",
-  showLegend: true,
+const line = grid.set(0, 0, 4, 8, contrib.line, {
+  label: " [ NETWORK_PERFORMANCE ] ",
+  showLegend: false,
   style: { line: "yellow", text: "white", baseline: "black" },
 });
 
-const bar = grid.set(0, 9, 6, 3, contrib.bar, {
-  label: " Status Codes ",
-  barWidth: 4,
+const healthBox = grid.set(0, 8, 4, 4, blessed.box, {
+  label: " [ SYSTEM_MANIFEST ] ",
+  tags: true,
+  padding: { left: 1, top: 1 },
+  style: { border: { fg: "yellow" } },
 });
 
-const spark = grid.set(6, 0, 2, 12, contrib.sparkline, {
-  label: " Throughput (RPS) ",
-  style: { fg: "cyan" },
+const table = grid.set(4, 0, 4, 9, contrib.table, {
+  keys: true,
+  label: " [ ACTIVE_WORKER_NODES ] ",
+  columnSpacing: 4,
+  columnWidth: [18, 10, 10, 12],
+});
+
+const gauge = grid.set(4, 9, 4, 3, contrib.gauge, {
+  label: " [ LOAD ] ",
+  stroke: "cyan",
+  fill: "white",
 });
 
 const log = grid.set(8, 0, 3, 12, contrib.log, {
-  label: " System Events ",
+  label: " [ ORCHESTRATOR_LOGS ] ",
+  tags: true,
   bufferLength: 100,
 });
 
@@ -101,14 +103,14 @@ const actionBar = blessed.listbar({
         openConfigModal(
           "TARGET URL",
           config.targetUrl,
-          (v) => (config.targetUrl = String(v)),
+          (v) => (config.targetUrl = v),
         ),
     },
     AGGRO: {
       keys: ["a"],
       callback: () =>
         openConfigModal(
-          "AGGRESSIVITY",
+          "AGRESSIVITY",
           String(config.aggressivity),
           (v) => (config.aggressivity = parseInt(v)),
         ),
@@ -123,134 +125,104 @@ const form = blessed.form({
   top: "center",
   left: "center",
   width: 50,
-  height: 10,
+  height: 8,
   border: "line",
   hidden: true,
-  label: " Settings ",
   keys: true,
   style: { border: { fg: "cyan" }, bg: "black" },
 });
 
-const formLabel = blessed.text({ parent: form, top: 1, left: 2, content: "" });
 const formInput = blessed.textbox({
   parent: form,
-  top: 3,
+  top: 2,
   left: 2,
   right: 2,
   height: 3,
   border: "line",
   inputOnFocus: true,
-  keys: true,
   style: { border: { fg: "white" }, focus: { border: { fg: "yellow" } } },
 });
 
-const okBtn = blessed.button({
-  parent: form,
-  bottom: 1,
-  right: 12,
-  width: 10,
-  height: 1,
-  content: " CONFIRM ",
-  align: "center",
-  mouse: true,
-  keys: true,
-  style: { bg: "#2e7d32", fg: "white", focus: { bg: "#4caf50", bold: true } },
-});
+let pubClient = null;
 
-const cancelBtn = blessed.button({
-  parent: form,
-  bottom: 1,
-  right: 2,
-  width: 10,
-  height: 1,
-  content: " CANCEL ",
-  align: "center",
-  mouse: true,
-  keys: true,
-  style: { bg: "#c62828", fg: "white", focus: { bg: "#f44336", bold: true } },
-});
-
-function cycleTheme() {
-  paletteIdx = (paletteIdx + 1) % PALETTES.length;
-  const p = PALETTES[paletteIdx];
-
-  line.style.line = p.main;
-  spark.style.fg = p.accent;
-  actionBar.style.selected.bg = p.main;
-
-  const widgets = [line, bar, spark, log, form];
-  widgets.forEach((w) => {
-    if (w.style && w.style.border) {
-      w.style.border.fg = p.main;
-    }
-  });
-
-  log.log(`${C.yellow}[THEME]${C.reset} Switched to ${p.name}`);
-  screen.render();
-}
-
-let activeCallback: (val: string) => void = () => {};
-let pubClient: any = null;
-
-function openConfigModal(
-  title: string,
-  current: string,
-  cb: (v: string) => void,
-) {
-  actionBar.detach();
-  formLabel.setContent(`${C.yellow}${title}${C.reset}`);
-  formInput.setValue(String(current));
-  activeCallback = cb;
-  form.show();
-  formInput.focus();
-  screen.render();
-}
-
-const closeConfigModal = () => {
-  form.hide();
-  screen.append(actionBar);
-  actionBar.focus();
-  screen.render();
-};
-
-okBtn.on("press", () => {
-  activeCallback(String(formInput.getValue()));
-  broadcast("UPDATE");
-  closeConfigModal();
-});
-
-cancelBtn.on("press", closeConfigModal);
-
-function broadcast(type: string) {
+function broadcast(type) {
   if (pubClient) {
     pubClient.publish(
       REDIS_KEYS.COMMAND_CHANNEL,
       JSON.stringify({ type, config }),
     );
+    log.log(`{cyan-fg}[ACTION]{/} ${type} signal broadcasted.`);
   }
-  log.log(`${C.cyan}[ACTION]${C.reset} ${type} dispatched.`);
+}
+
+function openConfigModal(title, current, cb) {
+  form.setLabel(` [ ${title} ] `);
+  formInput.setValue(current);
+  form.show();
+  formInput.focus();
+  formInput.once("submit", (v) => {
+    cb(v);
+    broadcast("UPDATE");
+    form.hide();
+    screen.render();
+  });
   screen.render();
 }
 
-function updateGraphs() {
-  if (rawLatencies.length === 0) return;
-  const sorted = [...rawLatencies].sort((a, b) => a - b);
-  const p99 = sorted[Math.ceil(sorted.length * 0.99) - 1] || 0;
+function cycleTheme() {
+  paletteIdx = (paletteIdx + 1) % PALETTES.length;
+  const p = PALETTES[paletteIdx];
 
-  latencyHistory.y.push(p99);
-  latencyHistory.x.push(new Date().toLocaleTimeString().slice(-5));
+  const components = [line, healthBox, table, gauge, log, form];
+  components.forEach((c) => {
+    if (c.style && c.style.border) c.style.border.fg = p.main;
+  });
 
-  if (latencyHistory.y.length > 30) {
-    latencyHistory.y.shift();
-    latencyHistory.x.shift();
+  line.style.line = p.main;
+  gauge.style.stroke = p.accent;
+  actionBar.style.selected.bg = p.main;
+  log.log(`{yellow-fg}[SYSTEM]{/} Applied palette: ${p.name}`);
+  screen.render();
+}
+
+function updateAnalytics() {
+  if (rawLatencies.length > 0) {
+    const sorted = [...rawLatencies].sort((a, b) => a - b);
+    const p99 = sorted[Math.ceil(sorted.length * 0.99) - 1] || 0;
+    latencyHistory.y.push(p99);
+    latencyHistory.x.push(new Date().toLocaleTimeString().slice(-5));
+    if (latencyHistory.y.length > 20) {
+      latencyHistory.y.shift();
+      latencyHistory.x.shift();
+    }
+    line.setData([latencyHistory]);
+    rawLatencies = [];
   }
 
-  line.setData([latencyHistory]);
-  bar.setData({
-    titles: ["2xx", "Err"],
-    data: [statuses["2xx"], statuses["5xx"]],
+  const total = statuses["2xx"] + statuses["5xx"];
+  const successRate =
+    total > 0 ? ((statuses["2xx"] / total) * 100).toFixed(2) : "100.00";
+
+  healthBox.setContent(
+    `{bold}STATUS:{/bold} ${isRunning ? "{green-fg}ACTIVE{/}" : "{red-fg}HALTED{/}"}\n` +
+      `{bold}HEALTH:{/bold} ${successRate}%\n` +
+      `{bold}UPTIME:{/bold} ${Math.floor((Date.now() - startTime) / 1000)}s\n` +
+      `{bold}AGGRO: {/bold} LVL_${config.aggressivity}\n` +
+      `{bold}TOTAL: {/bold} ${totalProcessed}`,
+  );
+
+  table.setData({
+    headers: ["NODE_ID", "RPS", "ERR", "STATE"],
+    data: [
+      [
+        "valkyrie-alpha",
+        `${reqCount}`,
+        `${statuses["5xx"]}`,
+        isRunning ? "RUN" : "IDLE",
+      ],
+      ["cluster-mesh", `${totalProcessed}`, "--", "UP"],
+    ],
   });
-  if (rawLatencies.length > 2000) rawLatencies.splice(0, 1000);
 }
 
 async function boot() {
@@ -258,19 +230,8 @@ async function boot() {
   pubClient = redis.duplicate();
   await Promise.all([redis.connect(), pubClient.connect()]);
 
-  log.log(
-    `${C.green}${C.bold}[SYSTEM]${C.reset} Redis Connected. Orchestrator Ready.`,
-  );
+  log.log(`{green-fg}[BOOT]{/} Orchestrator ready. Waiting for START signal.`);
   screen.render();
-
-  try {
-    await redis.xGroupCreate(
-      REDIS_KEYS.TELEMETRY_STREAM,
-      REDIS_KEYS.GROUP_NAME,
-      "0",
-      { MKSTREAM: true },
-    );
-  } catch (e) {}
 
   while (true) {
     const data = await redis.xReadGroup(
@@ -279,10 +240,12 @@ async function boot() {
       [{ key: REDIS_KEYS.TELEMETRY_STREAM, id: ">" }],
       { COUNT: 1000, BLOCK: 100 },
     );
-    if (data) {
+
+    if (data && isRunning) {
       const msgs = data[0].messages;
       msgs.forEach((m) => {
         reqCount++;
+        totalProcessed++;
         m.message.status.startsWith("2")
           ? statuses["2xx"]++
           : statuses["5xx"]++;
@@ -293,20 +256,22 @@ async function boot() {
         REDIS_KEYS.GROUP_NAME,
         msgs.map((m) => m.id),
       );
-      updateGraphs();
+      if (msgs.length > 50)
+        log.log(
+          `{white-fg}[MESH]{/} High-volume burst: ${msgs.length} frames.`,
+        );
     }
   }
 }
 
 setInterval(() => {
-  rpsHistory.push(isRunning ? reqCount : 0);
-  if (rpsHistory.length > 60) rpsHistory.shift();
-
-  spark.setData([], [rpsHistory]);
-
+  const load = isRunning
+    ? Math.min(100, (reqCount / (10 * config.aggressivity)) * 100)
+    : 0;
+  gauge.setPercent(load);
+  updateAnalytics();
   reqCount = 0;
   screen.render();
 }, 1000);
 
-screen.key(["escape"], closeConfigModal);
 boot().catch(console.error);
