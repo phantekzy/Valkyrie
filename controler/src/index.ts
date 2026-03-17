@@ -15,4 +15,5 @@ const line = grid.set(0, 0, 8, 12, contrib.line, {
 const log = grid.set(8, 0, 4, 12, contrib.log, { label: " Telemetry " });
 
 const chartData = { title: "P99", x: [] as string[], y: [] as number[] };
+let rawLatencies: number[] = [];
 screen.render();
