@@ -1,6 +1,6 @@
-# Valkyrie C2 | Distributed Orchestrator
+# Valkyrie 
 
-A high-performance, terminal-based Command & Control (C2) dashboard designed for managing distributed load-testing clusters. Built with Node.js, Redis, and Blessed-Contrib, Valkyrie provides a real-time, low-latency interface for orchestrating worker nodes and monitoring telemetry.
+A terminal-based Command & Control dashboard designed for managing distributed load-testing clusters. Built with Node.js, Redis, and Blessed-Contrib, Valkyrie provides a real-time, low-latency interface for orchestrating worker nodes and monitoring telemetry.
 
 ---
 
